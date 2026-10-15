@@ -54,7 +54,7 @@ The system lives in `pawpal_system.py` and is built from four main classes, with
 
 How they work together: an `Owner` has `Pet`s, each `Pet` has `Task`s, and the `Scheduler` turns all of the owner's tasks into a list of `PlanEntry` objects.
 
-**Status:** the classes, validation, sorting, filtering, recurring tasks, conflict detection, `build_plan()`, the `main.py` demo and 23 tests are done. `Pet.edit_task` and `Pet.remove_task` are implemented, and the Streamlit app can add pets and tasks, edit, remove or mark a task complete (which adds the next occurrence of a daily or weekly task), and generate the plan with its reasoning.
+**Status:** the classes, validation, sorting, filtering, recurring tasks, conflict detection, `build_plan()`, the `main.py` demo and 39 tests are done. `Pet.edit_task` and `Pet.remove_task` are implemented, and the Streamlit app can add pets and tasks, edit, remove or mark a task complete (which adds the next occurrence of a daily or weekly task), and generate the plan with its reasoning.
 
 ## 🖥️ Sample Output
 
@@ -120,7 +120,7 @@ Warning: Play session (12:30-12:50) overlaps Vet call (12:30-12:45) for Mia and 
 Warning: Grooming (17:00-17:45) overlaps Training (17:15-17:45) for Rex
 ```
 
-**Recurring tasks.** `Task.next_occurrence()` builds the next copy of a task. It's due today + 1 day for `DAILY` and today + 7 days for `WEEKLY`, calculated with `timedelta` so month ends, year ends and leap days are handled. `ONCE` tasks return `None`. `Scheduler.complete_task(pet, task)` marks the task complete and adds that copy to the pet, so the next occurrence is created automatically. Completing a task twice does not create a duplicate.
+**Recurring tasks.** `Task.next_occurrence()` builds the next copy of a task. It's due today + 1 day for `DAILY` and today + 7 days for `WEEKLY` (counted from the task's own due date instead if that is later, so finishing a future copy early never creates two copies for the same day), calculated with `timedelta` so month ends, year ends and leap days are handled. `ONCE` tasks return `None`. `Scheduler.complete_task(pet, task)` marks the task complete and adds that copy to the pet, so the next occurrence is created automatically. Completing a task twice does not create a duplicate.
 
 **Building the plan.** `Scheduler.build_plan(day=today)` combines these pieces into the daily plan. It takes the pending tasks due that day and places them by priority (high first), then earlier time, then creation order.
 - A task outside the owner's window is **dropped** ("outside available window").

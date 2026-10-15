@@ -1,5 +1,7 @@
 from datetime import date, time, timedelta
 
+import pytest
+
 from pawpal_system import Frequency, Outcome, Owner, Pet, Priority, Scheduler, Task
 
 
@@ -231,9 +233,6 @@ def test_build_plan_twice_does_not_duplicate_entries_and_plans_across_pets():
     assert _entry(scheduler, "Walk").final_start == time(8, 10)
 
 
-import pytest
-
-
 def test_edit_task_changes_only_the_given_fields():
     pet = Pet("Rex", "dog")
     task = Task("Walk", time(8, 0), 30)
@@ -289,3 +288,133 @@ def test_edited_and_removed_tasks_change_the_regenerated_plan():
     pet.remove_task(walk.id)
     scheduler.build_plan()
     assert [e.task.name for e in scheduler.scheduled] == ["Feed"]
+
+
+# --- Sorting and filtering -------------------------------------------------
+
+def _owner_with(*pets):
+    owner = Owner("Jordan", time(7, 0), time(20, 0))
+    for pet in pets:
+        owner.add_pet(pet)
+    return owner, Scheduler(owner)
+
+
+def test_sort_by_time_returns_tasks_in_chronological_order():
+    pet = Pet("Rex", "dog")
+    for name, start in [("Evening", time(17, 0)), ("Morning", time(7, 30)), ("Noon", time(12, 0))]:
+        pet.add_task(Task(name, start, 20))
+    owner, scheduler = _owner_with(pet)
+
+    result = scheduler.sort_by_time(owner.get_all_tasks())
+
+    assert [task.name for _, task in result] == ["Morning", "Noon", "Evening"]
+
+
+def test_sort_by_time_breaks_equal_times_by_creation_order():
+    first, second = Task("First", time(8, 0), 20), Task("Second", time(8, 0), 20)
+    pet = Pet("Rex", "dog")
+    pet.add_task(second)  # added to the pet in the opposite order
+    pet.add_task(first)
+    owner, scheduler = _owner_with(pet)
+
+    result = scheduler.sort_by_time(owner.get_all_tasks())
+
+    assert [task.name for _, task in result] == ["First", "Second"]
+
+
+def test_sort_by_time_does_not_modify_its_input():
+    pet = Pet("Rex", "dog")
+    pet.add_task(Task("Late", time(17, 0), 20))
+    pet.add_task(Task("Early", time(7, 30), 20))
+    owner, scheduler = _owner_with(pet)
+    pairs = owner.get_all_tasks()
+
+    scheduler.sort_by_time(pairs)
+
+    assert [task.name for _, task in pairs] == ["Late", "Early"]
+
+
+def test_filter_tasks_by_pet_by_status_and_both():
+    rex, mia = Pet("Rex", "dog"), Pet("Mia", "cat")
+    walk, groom, feed = Task("Walk", time(8, 0), 20), Task("Groom", time(9, 0), 20), Task("Feed", time(8, 0), 10)
+    rex.add_task(walk)
+    rex.add_task(groom)
+    mia.add_task(feed)
+    groom.mark_complete()
+    _, scheduler = _owner_with(rex, mia)
+
+    names = lambda pairs: sorted(task.name for _, task in pairs)  # noqa: E731
+
+    assert names(scheduler.filter_tasks(pet_name="Rex")) == ["Groom", "Walk"]
+    assert names(scheduler.filter_tasks(completed=False)) == ["Feed", "Walk"]
+    assert names(scheduler.filter_tasks(completed=True)) == ["Groom"]
+    assert names(scheduler.filter_tasks(pet_name="Rex", completed=False)) == ["Walk"]
+    assert names(scheduler.filter_tasks()) == ["Feed", "Groom", "Walk"]
+
+
+# --- Empty cases -----------------------------------------------------------
+
+def test_no_pets_or_no_tasks_gives_empty_results_without_errors():
+    for owner, scheduler in (_owner_with(), _owner_with(Pet("Rex", "dog"))):
+        scheduler.build_plan()
+        assert scheduler.scheduled == [] and scheduler.dropped == []
+        assert scheduler.find_conflicts() == []
+        assert scheduler.sort_by_time(owner.get_all_tasks()) == []
+        assert scheduler.filter_tasks(pet_name="Nobody") == []
+
+
+# --- Window boundaries -----------------------------------------------------
+
+@pytest.mark.parametrize(
+    "start, minutes, expected",
+    [
+        (time(7, 0), 780, Outcome.KEPT),       # fills the 07:00-20:00 window exactly
+        (time(7, 0), 781, Outcome.DROPPED),    # one minute too long
+        (time(19, 59), 1, Outcome.KEPT),       # last minute of the window
+        (time(6, 59), 30, Outcome.DROPPED),    # starts one minute before the window opens
+    ],
+)
+def test_window_boundaries(start, minutes, expected):
+    s = _plan(Task("T", start, minutes))
+
+    entry = _entry(s, "T")
+    assert entry.outcome == expected
+    if expected == Outcome.DROPPED:
+        assert "outside available window" in entry.reason  # not "no free slot"
+
+
+# --- Input validation ------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: Task("T", time(8, 0), 0),                  # zero duration
+        lambda: Task("T", time(8, 0), -5),                 # negative duration
+        lambda: Task("T", time(23, 30), 30),               # would end at midnight
+        lambda: Task("T", time(8, 0), 10, "HIGH"),         # priority must be a Priority
+        lambda: Owner("Jordan", time(20, 0), time(7, 0)),  # window ends before it starts
+    ],
+)
+def test_invalid_input_is_rejected(build):
+    with pytest.raises(ValueError):
+        build()
+
+
+def test_duplicate_pet_names_are_rejected():
+    owner = Owner("Jordan", time(7, 0), time(20, 0))
+    owner.add_pet(Pet("Rex", "dog"))
+
+    with pytest.raises(ValueError):
+        owner.add_pet(Pet("Rex", "cat"))
+
+
+def test_completing_a_future_copy_early_does_not_create_a_duplicate_day():
+    task = Task("Walk", time(7, 30), 30, frequency=Frequency.DAILY)
+    scheduler, pet = _scheduler_with(task)
+    tomorrow_copy = scheduler.complete_task(pet, task)      # due tomorrow
+
+    day_after = scheduler.complete_task(pet, tomorrow_copy)  # finished early, today
+
+    assert day_after.due_date == date.today() + timedelta(days=2)
+    pending_days = [t.due_date for t in pet.tasks if not t.completed]
+    assert pending_days == [date.today() + timedelta(days=2)]

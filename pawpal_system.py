@@ -64,8 +64,11 @@ class Task:
     def next_occurrence(self) -> Optional["Task"]:
         """Build the next occurrence of a recurring task.
 
-        A DAILY task comes back due today + 1 day and a WEEKLY task today + 7 days
-        (date arithmetic uses timedelta, so month, year and leap-day rollover are handled).
+        A DAILY task comes back due 1 day after the later of today and its own due date, and a
+        WEEKLY task 7 days after. For a task due today or earlier that is today + 1 day (or 7).
+        For a copy due in the future that was finished early, it counts from that due date, so
+        two copies never land on the same day. Date arithmetic uses timedelta, so month, year
+        and leap-day rollover are handled.
         The copy keeps the name, time, duration, priority and frequency, but gets a new id,
         a new created_at and completed=False. A ONCE task returns None.
         """
@@ -75,7 +78,7 @@ class Task:
         return replace(
             self,
             completed=False,
-            due_date=date.today() + timedelta(days=days),
+            due_date=max(date.today(), self.due_date) + timedelta(days=days),
             id=next(_task_ids),
             created_at=datetime.now(),
         )

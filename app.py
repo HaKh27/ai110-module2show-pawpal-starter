@@ -50,6 +50,17 @@ st.divider()
 st.subheader("Owner and Pets")
 owner.name = st.text_input("Owner name", value=owner.name)
 
+col_start, col_end = st.columns(2)
+with col_start:
+    window_start = st.time_input("Available from", value=owner.window_start, key="window_start")
+with col_end:
+    window_end = st.time_input("Available until", value=owner.window_end, key="window_end")
+try:
+    owner.set_window(window_start, window_end)
+except ValueError:
+    st.error("The available window must end after it starts. Keeping "
+             f"{owner.window_start:%H:%M}-{owner.window_end:%H:%M}.")
+
 with st.form("add_pet_form", clear_on_submit=True):
     pet_name = st.text_input("Pet name")
     species = st.selectbox("Species", ["dog", "cat", "other"])

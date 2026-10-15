@@ -46,7 +46,7 @@ pip install -r requirements.txt
 
 The system lives in `pawpal_system.py` and is built from four main classes, with a few small helper types. The UML is in `diagrams/uml.mmd`.
 
-- **`Owner`** holds the owner's name, their daily available window (start and end time) and their pets. `get_all_tasks()` returns every pet's tasks together as `(pet, task)` pairs.
+- **`Owner`** holds the owner's name, their daily available window (start and end time) and their pets. `set_window()` changes the window and rejects an end that isn't after the start. `get_all_tasks()` returns every pet's tasks together as `(pet, task)` pairs.
 - **`Pet`** holds a name, a species and a list of tasks, with `add_task`, `edit_task` and `remove_task`. `edit_task` only allows the editable fields and validates the new values first, so a bad edit leaves the task unchanged.
 - **`Task`** is one activity: a name, a fixed start time, a duration, a priority (`LOW`, `MEDIUM` or `HIGH`, default `MEDIUM`), a frequency (`ONCE`, `DAILY` or `WEEKLY`), a due date and a completed flag. `next_occurrence()` builds the next copy of a recurring task. It computes its own end time and checks whether it overlaps another task.
 - **`Scheduler`** is the brain. It reads tasks only through `Owner.get_all_tasks()`, so it plans across all pets at once. It places tasks by priority, then earlier time, then the order they were created. A task that overlaps a higher-priority one is moved to the next free slot later in the day, or dropped if none exists. A task outside the owner's window is dropped. Each decision is recorded as a `PlanEntry`. `sort_by_time` and `filter_tasks` (by pet name or completion status) work on the `(pet, task)` pairs, and `complete_task` marks a task done and automatically adds the next occurrence of a daily or weekly task to its pet.
@@ -54,7 +54,7 @@ The system lives in `pawpal_system.py` and is built from four main classes, with
 
 How they work together: an `Owner` has `Pet`s, each `Pet` has `Task`s, and the `Scheduler` turns all of the owner's tasks into a list of `PlanEntry` objects.
 
-**Status:** the classes, validation, sorting, filtering, recurring tasks, conflict detection, `build_plan()`, the `main.py` demo and 39 tests are done. `Pet.edit_task` and `Pet.remove_task` are implemented, and the Streamlit app can add pets and tasks, edit, remove or mark a task complete (which adds the next occurrence of a daily or weekly task), and generate the plan with its reasoning.
+**Status:** the classes, validation, sorting, filtering, recurring tasks, conflict detection, `build_plan()`, the `main.py` demo and 41 tests are done. `Pet.edit_task` and `Pet.remove_task` are implemented, and the Streamlit app can add pets and tasks, edit, remove or mark a task complete (which adds the next occurrence of a daily or weekly task), and generate the plan with its reasoning.
 
 ## 🖥️ Sample Output
 
@@ -79,19 +79,47 @@ Time        | Pet Name | Activity       | Priority | Frequency
 
 ## 🧪 Testing PawPal+
 
+Run the full test suite from the project folder:
+
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
 
-Sample test output:
+Output of a successful run:
 
 ```
-# Paste your pytest output here
+============================= test session starts ==============================
+platform darwin -- Python 3.14.7, pytest-9.1.1, pluggy-1.7.0
+rootdir: .../ai110-module2show-pawpal-starter
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.15.1
+collected 41 items
+
+tests/test_pawpal.py .........................................           [100%]
+
+============================== 41 passed in 0.03s ==============================
 ```
+
+**What the 41 tests cover** (all in `tests/test_pawpal.py`)
+
+| Area | What is checked |
+|------|-----------------|
+| Sorting | Tasks come back in time order, equal times fall back to creation order, and the input list isn't modified |
+| Filtering | By pet, by completion status, by both, and an unknown pet gives an empty result |
+| Recurring tasks | A daily task creates a copy due tomorrow and a weekly one a week later. A one-time task creates nothing, completing twice doesn't duplicate, and a late or early completion still gets the right date |
+| Conflict detection | Warnings for the same time or an overlap, on the same pet or different pets. No warning for back-to-back or completed tasks |
+| The daily plan | Priority wins a conflict, ties go to the earlier time then creation order, and tasks are moved past a chain of blockers. Tasks with no free slot or outside the window are dropped, completed and other-day tasks are skipped, every entry has a reason, and rebuilding doesn't duplicate entries |
+| Editing | Valid edits apply, bad edits are rejected and leave the task unchanged, removal works, and edits change the regenerated plan |
+| Owner window | `set_window` updates the window and rejects a bad one, and changing it changes the plan |
+| Boundaries and validation | Exact-fit and one-minute-over windows, empty owners and pets, and rejected bad input (zero duration, end past midnight, inverted window, duplicate pet names) |
+
+**Confidence level: ★★★★☆ (4 out of 5)**
+
+I'm confident in the scheduling rules themselves. Each one has a test, and I confirmed the tests catch real mistakes by temporarily breaking the code (reversed priority, a missing drop, an off-by-one window) and watching them fail. I stopped short of five stars because:
+- The Streamlit app was checked with throwaway test-runner scripts but has no automated tests in the suite.
+- The plan places tasks greedily by priority, so it can drop a task that a smarter arrangement would have kept. The tests confirm the rule is applied consistently, not that the result is optimal.
+- Blank task names are accepted, and a plan that crosses midnight is untested.
 
 ## 📐 Smarter Scheduling
 
@@ -145,10 +173,13 @@ Dropped
 
 Describe your app in numbered steps so a reader can follow along without watching a video:
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+Start the app with `streamlit run app.py`. (For a terminal version of the same logic, run `python main.py`.)
+
+1. **Enter owner and pet info.** Under "Owner and Pets", type the owner's name, then add a pet with a name and species. Pet names must be unique, and a duplicate shows an error. Set the owner's available window with "Available from" and "Available until" (default 07:00-20:00). An end time that isn't after the start shows an error and keeps the previous window.
+2. **Add tasks.** Once a pet exists, pick the pet and enter a task title, start time, duration, priority (default Medium) and frequency (once, daily or weekly). The task table below lists every task sorted by time, with a Status column showing pending or done.
+3. **Edit, complete or remove a task.** Under "Edit or remove a task", choose a task and change its fields with "Save changes", press "Mark complete", or press "Remove task". Completing a daily or weekly task automatically adds the next occurrence, and the app says when it's due.
+4. **Generate the schedule.** Press "Generate schedule". If any tasks overlap, a warning lists each overlap. The plan table shows each task's final time, priority, outcome (kept or moved) and the reason for it.
+5. **Read the explanations.** Higher-priority tasks keep their slots, and lower-priority overlapping tasks are moved to the next free slot with a reason such as "moved from 08:00 to 08:20 because it overlapped Walk". Tasks that can't fit, or fall outside the owner's window, appear under "Dropped tasks" with the reason.
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+

@@ -143,9 +143,14 @@ class Owner:
     pets: List[Pet] = field(default_factory=list)
 
     def __post_init__(self):
-        """Validate that the available window ends after it starts."""
-        if self.window_end <= self.window_start:
+        """Validate the available window given at creation."""
+        self.set_window(self.window_start, self.window_end)
+
+    def set_window(self, start: time, end: time) -> None:
+        """Set the daily available window, or raise ValueError (keeping the old one) if end is not after start."""
+        if end <= start:
             raise ValueError("window_end must be after window_start")
+        self.window_start, self.window_end = start, end
 
     def add_pet(self, pet: Pet) -> None:
         """Add a pet to this owner, rejecting duplicate pet names."""

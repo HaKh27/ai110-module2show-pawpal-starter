@@ -418,3 +418,29 @@ def test_completing_a_future_copy_early_does_not_create_a_duplicate_day():
     assert day_after.due_date == date.today() + timedelta(days=2)
     pending_days = [t.due_date for t in pet.tasks if not t.completed]
     assert pending_days == [date.today() + timedelta(days=2)]
+
+
+def test_set_window_updates_the_window_and_rejects_a_bad_one():
+    owner = Owner("Jordan", time(7, 0), time(20, 0))
+
+    owner.set_window(time(9, 0), time(17, 0))
+    assert (owner.window_start, owner.window_end) == (time(9, 0), time(17, 0))
+
+    with pytest.raises(ValueError):
+        owner.set_window(time(18, 0), time(8, 0))
+    assert (owner.window_start, owner.window_end) == (time(9, 0), time(17, 0))  # unchanged
+
+
+def test_changing_the_window_changes_the_plan():
+    owner = Owner("Jordan", time(7, 0), time(20, 0))
+    pet = Pet("Rex", "dog")
+    owner.add_pet(pet)
+    pet.add_task(Task("Walk", time(8, 0), 30))
+    scheduler = Scheduler(owner)
+
+    scheduler.build_plan()
+    assert scheduler.dropped == []
+
+    owner.set_window(time(9, 0), time(17, 0))  # the 08:00 walk is now before the window
+    scheduler.build_plan()
+    assert [e.task.name for e in scheduler.dropped] == ["Walk"]

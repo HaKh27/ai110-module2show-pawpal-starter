@@ -7,37 +7,35 @@
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
-1. User should be able to label activities by priority (Levels: Low, Medium, High)
-2. User should be able to schedule activities while making sure there's no conflict and have some sort of conflict resolution 
-3. User should be able to create a Pet object 
+My UML has four main classes, plus a small result class and an enum:
 
-1. Priority class attribute: priority level , function: classify an activity's priority 
-2. Schedule a task attribute: task name, task time   function: check for collisons, check if task is valid in that time slot 
-3. Pet object attribute: pet name   function: add pet to family 
+- **Owner:** holds the owner's name, their daily available window (start and end time) and their pets. It can add a pet, and `get_all_tasks()` returns every pet's tasks together as (pet, task) pairs. The scheduler reads tasks only through that method.
+- **Pet:** holds a name, a species and its tasks. It can add, edit and remove tasks.
+- **Task:** holds a name, a fixed start time, a duration, a priority (Low, Medium or High, default Medium), a frequency (once, daily or weekly, shown in the plan only), a completed flag and a creation timestamp. Completed tasks are skipped by the scheduler. It computes its own end time and checks whether it overlaps another task.
+- **Scheduler:** reads the owner's pets' tasks and builds the daily plan. It orders tasks by priority, then time, then creation order, resolves overlaps and window limits, and records the reason for each decision.
+- **PlanEntry:** one line of the plan, with the task, pet name, final start time, outcome (kept, moved or dropped) and reason. It's what lets the plan explain itself.
+- **Priority (enum):** Low, Medium and High.
+
+Owners have pets, pets have tasks, and the scheduler reads from the owner and produces plan entries.
+
+The requirements the design is built around:
+
+1. A user can assign each task a priority of Low, Medium or High (default: Medium). The scheduler places higher-priority tasks first. When the day can't fit everything, lower-priority tasks are dropped first, and the plan lists each dropped task with the reason. Ties within the same priority go to the task with the earlier scheduled time. If the times are also equal, the task that was logged first goes first.
+2. A user can add tasks with a name, a fixed start time, a duration and a priority. End time is computed as start time plus duration. The scheduler detects when two tasks overlap in time. When there's a conflict, the higher-priority task keeps its slot. The lower-priority task is moved to the next free slot later in the day, or dropped if there isn't one, and the plan explains either outcome. A task must fit entirely inside the owner's available window. A task that starts before the window, or can't fit before it closes, is dropped with the reason "outside available window". A task that starts inside the window but overlaps a higher-priority task is moved or dropped as described above. Equal-priority conflicts use the same tie-break as item 1.
+3. A user can enter owner info (name and daily available window, a start and end time) and add one or more pets (name and species). Each task belongs to a pet. A user can add, edit or remove a task, and the plan regenerates from the updated list.
+4. A user can view a generated daily plan, ordered by start time. Each entry shows the pet, task, start time, duration and priority. Beside it, the plan explains why each task was kept, moved or dropped. Dropped tasks are listed separately with their reason.
+
 **b. Design changes**
 
 - Did your design change during implementation?
 - If yes, describe at least one change and why you made it.
-yes, 
-1. I wanted to make priority a class, but it makes more sense for there to be a TASK class with priority as an attribute.  A user can assign each task a priority of Low, Medium or High (default: Medium). The scheduler places higher-priority tasks first. When the day can't fit everything, lower-priority tasks are dropped first, and the plan lists each dropped task with the reason. Ties within the same priority go to the task with the earlier scheduled time. If the times are also equal, the task that was logged first goes first.
-Responsibilities
-- Task holds the priority attribute.
-- Scheduler sorts by it.
 
-2. A user can add tasks with a name, a fixed start time, a duration and a priority. End time is computed as start time plus duration. The scheduler detects when two tasks overlap in time. When there's a conflict, the higher-priority task keeps its slot. The lower-priority task is moved to the next free slot later in the day, or dropped if there isn't one, and the plan explains either outcome. A task must fit entirely inside the owner's available window. A task that starts before the window, or can't fit before it closes, is dropped with the reason "outside available window". A task that starts inside the window but overlaps a higher-priority task is moved or dropped as described above. Equal-priority conflicts use the same tie-break as item 1.
-Responsibilities
-- Task holds name, start time, duration and priority.
-- Scheduler detects overlaps, moves or drops tasks and records the reason for each.
+Yes, the design changed while I was tightening the requirements, before any scheduling code was written:
 
-3. A user can enter owner info (name and daily available window, a start and end time) and add one or more pets (name and species). Each task belongs to a pet. A user can add, edit or remove a task, and the plan regenerates from the updated list.
-Responsibilities
-- Owner holds name, available window and its pets, and has add_pet.
-- Pet holds name, species and its tasks, and has add_task, edit_task and remove_task.
-
-4. A user can view a generated daily plan, ordered by start time. Each entry shows the pet, task, start time, duration and priority. Beside it, the plan explains why each task was kept, moved or dropped. Dropped tasks are listed separately with their reason.
-Responsibilities
-- Scheduler builds the plan from all of the owner's pets' tasks and produces the explanation text.
-
+1. **`Priority` became an attribute of `Task` instead of its own class.** Priority is a value the user picks, so there is nothing for a class to classify. Making it an attribute (an enum with Low, Medium and High) keeps the design at four main classes, and the scheduler just sorts by it.
+2. **I dropped the separate "Schedule a task" object.** The name and time live on `Task`, and the scheduling logic lives in `Scheduler`. `Task` also gained a fixed start time and a duration, with end time computed, so the scheduler can detect overlaps.
+3. **I added `PlanEntry` and dropped a `Plan` wrapper.** The plan has to explain why each task was kept, moved or dropped, so each entry carries an outcome and a reason. A `Plan` class would have been a wrapper around two lists, so `Scheduler` holds those lists directly.
+4. **`Owner` gained a daily available window.** Without it, "the day can't fit everything" and "moved to a later slot" have no meaning, because the day would never end.
 
 ---
 

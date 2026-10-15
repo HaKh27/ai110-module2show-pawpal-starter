@@ -5,6 +5,7 @@ classDiagram
         +time window_end
         +List~Pet~ pets
         +add_pet(pet) void
+        +get_all_tasks() List~Pet_Task~
     }
 
     class Pet {
@@ -22,7 +23,10 @@ classDiagram
         +time start_time
         +int duration_minutes
         +Priority priority
+        +Frequency frequency
+        +bool completed
         +datetime created_at
+        +mark_complete() void
         +end_time() time
         +overlaps(other) bool
     }
@@ -46,13 +50,29 @@ classDiagram
         +Task task
         +str pet_name
         +time final_start
-        +str outcome
+        +Outcome outcome
         +str reason
+    }
+
+    class Frequency {
+        <<enumeration>>
+        ONCE
+        DAILY
+        WEEKLY
+    }
+
+    class Outcome {
+        <<enumeration>>
+        KEPT
+        MOVED
+        DROPPED
     }
 
     Owner "1" --> "*" Pet : has
     Pet "1" --> "*" Task : has
     Task --> Priority : uses
+    Task --> Frequency : uses
     Scheduler --> Owner : reads
     Scheduler "1" --> "*" PlanEntry : produces
     PlanEntry --> Task : refers to
+    PlanEntry --> Outcome : uses

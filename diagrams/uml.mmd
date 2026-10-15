@@ -26,7 +26,9 @@ classDiagram
         +Frequency frequency
         +bool completed
         +datetime created_at
+        +date due_date
         +mark_complete() void
+        +next_occurrence() Task
         +end_time() time
         +overlaps(other) bool
     }
@@ -42,7 +44,11 @@ classDiagram
         +Owner owner
         +List~PlanEntry~ scheduled
         +List~PlanEntry~ dropped
-        +build_plan() void
+        +sort_by_time(pairs) List~Pet_Task~
+        +filter_tasks(pet_name, completed) List~Pet_Task~
+        +find_conflicts() List~str~
+        +complete_task(pet, task) Task
+        +build_plan(day) void
     }
 
     class PlanEntry {
@@ -52,6 +58,7 @@ classDiagram
         +time final_start
         +Outcome outcome
         +str reason
+        +time_range() str
     }
 
     class Frequency {

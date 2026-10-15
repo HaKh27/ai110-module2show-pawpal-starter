@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-from datetime import datetime, time
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, time, timedelta
 from enum import Enum
 from itertools import count
 from typing import List, Optional, Tuple
@@ -30,16 +30,22 @@ def _minutes(t: time) -> int:
     return t.hour * 60 + t.minute
 
 
+def _to_time(minutes: int) -> time:
+    """Return the time of day for a number of minutes since midnight."""
+    return time(minutes // 60, minutes % 60)
+
+
 @dataclass
 class Task:
     name: str
     start_time: time
     duration_minutes: int
     priority: Priority = Priority.MEDIUM
-    frequency: Frequency = Frequency.ONCE  # display only; the scheduler doesn't use it
+    frequency: Frequency = Frequency.ONCE
     completed: bool = False
     id: int = field(default_factory=lambda: next(_task_ids))
     created_at: datetime = field(default_factory=datetime.now)  # display only; ties use id
+    due_date: date = field(default_factory=date.today)
 
     def __post_init__(self):
         """Validate priority, duration and that the task ends before midnight."""
@@ -54,6 +60,25 @@ class Task:
     def mark_complete(self) -> None:
         """Mark this task as done; the scheduler skips completed tasks."""
         self.completed = True
+
+    def next_occurrence(self) -> Optional["Task"]:
+        """Build the next occurrence of a recurring task.
+
+        A DAILY task comes back due today + 1 day and a WEEKLY task today + 7 days
+        (date arithmetic uses timedelta, so month, year and leap-day rollover are handled).
+        The copy keeps the name, time, duration, priority and frequency, but gets a new id,
+        a new created_at and completed=False. A ONCE task returns None.
+        """
+        days = {Frequency.DAILY: 1, Frequency.WEEKLY: 7}.get(self.frequency)
+        if days is None:
+            return None
+        return replace(
+            self,
+            completed=False,
+            due_date=date.today() + timedelta(days=days),
+            id=next(_task_ids),
+            created_at=datetime.now(),
+        )
 
     def end_time(self) -> time:
         """Return start_time + duration_minutes."""
@@ -81,15 +106,30 @@ class Pet:
         """Add a task to this pet."""
         self.tasks.append(task)
 
+    def _find_task(self, task_id: int) -> Task:
+        """Return this pet's task with the given id, or raise ValueError."""
+        for task in self.tasks:
+            if task.id == task_id:
+                return task
+        raise ValueError(f"no task with id {task_id}")
+
     def edit_task(self, task_id: int, changes: dict) -> None:
-        """Update the task with the given id using the given field changes."""
-        # Only EDITABLE_FIELDS are allowed (raise ValueError otherwise);
-        # re-run the Task checks after editing.
-        pass
+        """Update the task with the given id using the given field changes.
+
+        Only EDITABLE_FIELDS may change. The new values are validated first, so a bad
+        edit raises ValueError and leaves the task exactly as it was.
+        """
+        task = self._find_task(task_id)
+        bad = set(changes) - set(self.EDITABLE_FIELDS)
+        if bad:
+            raise ValueError(f"cannot edit: {', '.join(sorted(bad))}")
+        updated = replace(task, **changes)  # runs the Task checks on the new values
+        for name in changes:
+            setattr(task, name, getattr(updated, name))
 
     def remove_task(self, task_id: int) -> None:
-        """Remove the task with the given id."""
-        pass
+        """Remove the task with the given id, or raise ValueError if this pet has none."""
+        self.tasks.remove(self._find_task(task_id))
 
 
 @dataclass
@@ -124,6 +164,13 @@ class PlanEntry:
     outcome: Outcome
     reason: str
 
+    def time_range(self) -> str:
+        """Return the final "HH:MM-HH:MM" time range, or an empty string if the task was dropped."""
+        if self.final_start is None:
+            return ""
+        end = _to_time(_minutes(self.final_start) + self.task.duration_minutes)
+        return f"{self.final_start:%H:%M}-{end:%H:%M}"
+
 
 class Scheduler:
     def __init__(self, owner: Owner):
@@ -132,11 +179,119 @@ class Scheduler:
         self.scheduled: List[PlanEntry] = []
         self.dropped: List[PlanEntry] = []
 
-    def build_plan(self) -> None:
-        """Rebuild the scheduled and dropped lists, with a reason on every entry."""
-        # Read tasks only from self.owner.get_all_tasks(), skipping completed ones.
-        # Place tasks in order of (-priority.value, start_time, id), resolving
-        # overlaps and window limits. Then sort scheduled by final_start for display.
+    def sort_by_time(self, pairs: List[Tuple[Pet, Task]]) -> List[Tuple[Pet, Task]]:
+        """Sort (pet, task) pairs by task start time, earliest first.
+
+        Equal start times are ordered by task id (creation order), so the result is always
+        the same. Returns a new list; the input is not modified.
+        """
+        return sorted(pairs, key=lambda pt: (pt[1].start_time, pt[1].id))
+
+    def filter_tasks(
+        self, pet_name: Optional[str] = None, completed: Optional[bool] = None
+    ) -> List[Tuple[Pet, Task]]:
+        """Return the owner's (pet, task) pairs, optionally filtered.
+
+        pet_name keeps only that pet's tasks, and completed=True or False keeps only done or
+        pending tasks. A filter left as None is not applied, so both can be combined.
+        Reads every pet's tasks through Owner.get_all_tasks().
+        """
+        return [
+            (pet, task)
+            for pet, task in self.owner.get_all_tasks()
+            if (pet_name is None or pet.name == pet_name)
+            and (completed is None or task.completed == completed)
+        ]
+
+    def find_conflicts(self) -> List[str]:
+        """Return one warning message for each pair of overlapping pending tasks.
+
+        Checks tasks across all pets, so it catches conflicts on the same pet or between
+        pets. Completed tasks are ignored, and so are tasks due on different days. Tasks that
+        only touch (one ends when the next starts) are not conflicts. The tasks are sorted by
+        start time, so each task is compared only with the ones that start before it ends.
+        Never raises: an empty list means no conflicts.
+        """
+        pairs = self.sort_by_time(self.filter_tasks(completed=False))
+        warnings = []
+        for i, (pet_a, a) in enumerate(pairs):
+            for pet_b, b in pairs[i + 1:]:
+                if b.start_time >= a.end_time():
+                    break  # sorted by start time, so no later task can overlap a
+                if a.due_date == b.due_date:  # b starts inside a, so they overlap
+                    who = f"for {pet_a.name}" if pet_a is pet_b else f"for {pet_a.name} and {pet_b.name}"
+                    warnings.append(
+                        f"Warning: {a.name} ({a.start_time:%H:%M}-{a.end_time():%H:%M}) overlaps "
+                        f"{b.name} ({b.start_time:%H:%M}-{b.end_time():%H:%M}) {who}"
+                    )
+        return warnings
+
+    def complete_task(self, pet: Pet, task: Task) -> Optional[Task]:
+        """Mark a task complete and automatically schedule its next occurrence.
+
+        For a daily or weekly task, the next copy (from Task.next_occurrence) is added to the
+        pet and returned. Returns None for a one-time task, or if the task was already
+        completed, so completing twice never creates a duplicate.
+        """
+        if task.completed:
+            return None
+        task.mark_complete()
+        next_task = task.next_occurrence()
+        if next_task:
+            pet.add_task(next_task)
+        return next_task
+
+    def build_plan(self, day: Optional[date] = None) -> None:
+        """Build the plan for one day, with an outcome and a reason on every entry.
+
+        Uses the pending tasks due on day (default today), read through the owner's pets.
+        Tasks are placed in order of priority (high first), then earlier time, then id.
+        A task outside the owner's window is dropped. A task that overlaps one already placed
+        moves to the next free slot later in the day, or is dropped if none fits before the
+        window closes. Task objects are never changed; a moved time lives in PlanEntry.final_start.
+        scheduled is sorted by final start time, and dropped lists everything left out.
+        """
+        day = day or date.today()
         self.scheduled.clear()
         self.dropped.clear()
-        pass
+
+        todo = [(pet, task) for pet, task in self.filter_tasks(completed=False) if task.due_date == day]
+        todo.sort(key=lambda pt: (-pt[1].priority.value, pt[1].start_time, pt[1].id))
+
+        window_start, window_end = _minutes(self.owner.window_start), _minutes(self.owner.window_end)
+        window = f"{self.owner.window_start:%H:%M}-{self.owner.window_end:%H:%M}"
+        placed = []  # (start, end, task name) in minutes, for tasks already on the plan
+
+        for pet, task in todo:
+            start, length = _minutes(task.start_time), task.duration_minutes
+            if start < window_start or start + length > window_end:
+                self._drop(pet, task, f"outside available window ({window})")
+                continue
+
+            slot, blocker = start, None
+            while True:  # jump past each overlapping task until the slot is free
+                clash = next((p for p in placed if slot < p[1] and p[0] < slot + length), None)
+                if clash is None:
+                    break
+                blocker = blocker or clash[2]
+                slot = clash[1]
+
+            if slot + length > window_end:
+                self._drop(pet, task, f"no free slot left in the day (overlapped {blocker})")
+            elif slot == start:
+                placed.append((slot, slot + length, task.name))
+                self.scheduled.append(PlanEntry(
+                    task, pet.name, task.start_time, Outcome.KEPT,
+                    f"kept at requested time (priority {task.priority.name})"))
+            else:
+                placed.append((slot, slot + length, task.name))
+                self.scheduled.append(PlanEntry(
+                    task, pet.name, _to_time(slot), Outcome.MOVED,
+                    f"moved from {task.start_time:%H:%M} to {_to_time(slot):%H:%M} "
+                    f"because it overlapped {blocker}"))
+
+        self.scheduled.sort(key=lambda e: (e.final_start, e.task.id))
+
+    def _drop(self, pet: Pet, task: Task, reason: str) -> None:
+        """Record a task as dropped from the plan, with the reason."""
+        self.dropped.append(PlanEntry(task, pet.name, None, Outcome.DROPPED, reason))

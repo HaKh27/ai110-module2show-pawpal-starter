@@ -11,7 +11,7 @@ My UML has four main classes, plus a small result class and an enum:
 
 - **Owner:** holds the owner's name, their daily available window (start and end time) and their pets. It can add a pet, and `get_all_tasks()` returns every pet's tasks together as (pet, task) pairs. The scheduler reads tasks only through that method.
 - **Pet:** holds a name, a species and its tasks. It can add, edit and remove tasks.
-- **Task:** holds a name, a fixed start time, a duration, a priority (Low, Medium or High, default Medium), a frequency (once, daily or weekly, shown in the plan only), a completed flag and a creation timestamp. Completed tasks are skipped by the scheduler. It computes its own end time and checks whether it overlaps another task.
+- **Task:** holds a name, a fixed start time, a duration, a priority (Low, Medium or High, default Medium), a frequency (once, daily or weekly), a due date, a completed flag and a creation timestamp. Completed tasks are skipped by the scheduler, and completing a daily or weekly task through `Scheduler.complete_task` automatically adds the next occurrence to the pet. It computes its own end time and checks whether it overlaps another task.
 - **Scheduler:** reads the owner's pets' tasks and builds the daily plan. It orders tasks by priority, then time, then creation order, resolves overlaps and window limits, and records the reason for each decision.
 - **PlanEntry:** one line of the plan, with the task, pet name, final start time, outcome (kept, moved or dropped) and reason. It's what lets the plan explain itself.
 - **Priority (enum):** Low, Medium and High.
@@ -50,6 +50,10 @@ Yes, the design changed while I was tightening the requirements, before any sche
 
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
+
+My scheduler places tasks greedily in priority order and never reshuffles a higher-priority task to make room for a lower one. A high-priority task always keeps its slot, and any lower-priority task that overlaps it is moved to the next free slot later in the day or dropped. The cost is that this may not keep the most tasks possible. In some cases, moving the high-priority task or letting a lower-priority task win would have let two or three other tasks fit instead of dropping them. Finding that best arrangement means trying many combinations of tasks, which is much more complex to build, test and explain.
+
+This is reasonable for pet care because the priorities mean something real: a medication or feeding must happen, and a play session can wait. The plan is also easy to predict and to explain. Each decision is one sentence ("moved because it overlapped a higher-priority task"), which matters since the plan has to show its reasoning. A day has a few dozen tasks, so the simple rule is good enough, and the user can always edit a task's time or priority if they disagree with the result.
 
 ---
 

@@ -100,7 +100,18 @@ tests/test_pawpal.py .........................................           [100%]
 
 ============================== 41 passed in 0.03s ==============================
 ```
+Hkoincidence@Mubashers-MacBook-Pro ai110-module2show-pawpal-starter % python3 -m pytest
+=================================================================================================== test session starts ===================================================================================================
+platform darwin -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/Hkoincidence/Desktop/AI110_FALL2026/AI110Project2/ai110-module2show-pawpal-starter
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.15.1
+collected 41 items                                                                                                                                                                                                        
 
+tests/test_pawpal.py .........................................                                                                                                                                                      [100%]
+
+=================================================================================================== 41 passed in 0.05s ====================================================================================================
 **What the 41 tests cover** (all in `tests/test_pawpal.py`)
 
 | Area | What is checked |
@@ -182,4 +193,7 @@ Start the app with `streamlit run app.py`. (For a terminal version of the same l
 5. **Read the explanations.** Higher-priority tasks keep their slots, and lower-priority overlapping tasks are moved to the next free slot with a reason such as "moved from 08:00 to 08:20 because it overlapped Walk". Tasks that can't fit, or fall outside the owner's window, appear under "Dropped tasks" with the reason.
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
-
+![PawPalOwner](image.png)
+![AddPet](image-1.png)
+![EditRemoveTask](image-2.png)
+![scheduleBuilder](image-3.png) #moved brownie's breakfast from 9:15 start time to 9:20 to avoid conflicts. 

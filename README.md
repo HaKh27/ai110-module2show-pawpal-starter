@@ -197,3 +197,4 @@ Start the app with `streamlit run app.py`. (For a terminal version of the same l
 ![AddPet](image-1.png)
 ![EditRemoveTask](image-2.png)
 ![scheduleBuilder](image-3.png) #moved brownie's breakfast from 9:15 start time to 9:20 to avoid conflicts. 
+![InvalidActivityTime](image-4.png)

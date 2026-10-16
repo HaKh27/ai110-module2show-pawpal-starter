@@ -22,6 +22,18 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## ✨ Features
+
+- **Multi-pet care tracking.** One owner, any number of pets (dog, cat, or any species you type in), each with its own tasks. Pet names must be unique.
+- **Task management.** Add, edit and remove tasks with a start time, duration, priority (low, medium, high) and frequency (once, daily, weekly). Invalid input (such as a task that runs past midnight) is rejected with a clear message, and a bad edit leaves the task unchanged.
+- **Sorting by time.** Tasks are listed in start-time order, with creation order breaking ties so the result is always the same (`sort_by_time`).
+- **Filtering.** Show one pet's tasks, only pending or only done tasks, or both filters together (`filter_tasks`).
+- **Conflict warnings.** Overlapping tasks, on the same pet or across pets, produce a readable warning instead of an error. Tasks that only touch end-to-end don't count, and completed tasks and tasks on other days are ignored (`find_conflicts`).
+- **Daily and weekly recurrence.** Completing a recurring task automatically adds the next one, using calendar-safe date math for month ends and leap days. Completing it twice never creates a duplicate (`complete_task`, `next_occurrence`).
+- **Priority-based daily plan.** High-priority tasks claim their slots first. A task that overlaps one already placed moves to the next free slot, and a task that can't fit is dropped (`build_plan`).
+- **Available-window awareness.** Tasks outside the owner's daily window are dropped from the plan.
+- **Explained decisions.** Every plan entry is marked kept, moved or dropped with a plain-English reason, such as "moved from 08:00 to 08:20 because it overlapped Walk".
+
 ## Getting started
 
 ### Setup

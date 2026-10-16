@@ -7,14 +7,14 @@
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
-My UML has four main classes, plus a small result class and an enum:
+My UML has four main classes, plus a small result class and three enums:
 
 - **Owner:** holds the owner's name, their daily available window (start and end time) and their pets. It can add a pet, and `get_all_tasks()` returns every pet's tasks together as (pet, task) pairs. The scheduler reads tasks only through that method.
 - **Pet:** holds a name, a species and its tasks. It can add, edit and remove tasks.
 - **Task:** holds a name, a fixed start time, a duration, a priority (Low, Medium or High, default Medium), a frequency (once, daily or weekly), a due date, a completed flag and a creation timestamp. Completed tasks are skipped by the scheduler, and completing a daily or weekly task through `Scheduler.complete_task` automatically adds the next occurrence to the pet. It computes its own end time and checks whether it overlaps another task.
 - **Scheduler:** reads the owner's pets' tasks and builds the daily plan. It orders tasks by priority, then time, then creation order, resolves overlaps and window limits, and records the reason for each decision.
 - **PlanEntry:** one line of the plan, with the task, pet name, final start time, outcome (kept, moved or dropped) and reason. It's what lets the plan explain itself.
-- **Priority (enum):** Low, Medium and High.
+- **Priority, Frequency and Outcome (enums):** Low, Medium and High; once, daily and weekly; and kept, moved and dropped.
 
 Owners have pets, pets have tasks, and the scheduler reads from the owner and produces plan entries.
 
@@ -36,6 +36,13 @@ Yes, the design changed while I was tightening the requirements, before any sche
 2. **I dropped the separate "Schedule a task" object.** The name and time live on `Task`, and the scheduling logic lives in `Scheduler`. `Task` also gained a fixed start time and a duration, with end time computed, so the scheduler can detect overlaps.
 3. **I added `PlanEntry` and dropped a `Plan` wrapper.** The plan has to explain why each task was kept, moved or dropped, so each entry carries an outcome and a reason. A `Plan` class would have been a wrapper around two lists, so `Scheduler` holds those lists directly.
 4. **`Owner` gained a daily available window.** Without it, "the day can't fit everything" and "moved to a later slot" have no meaning, because the day would never end.
+
+Later changes came from building and testing the code, and I updated the UML to match at the end:
+
+5. **`Task` gained an `id`, a `due_date` and a `Frequency`.** The id gives a stable tie-break and lets `edit_task` and `remove_task` find a task. The due date and frequency let a completed daily or weekly task create its next copy without the plan mixing days.
+6. **`Scheduler` gained `sort_by_time`, `filter_tasks`, `find_conflicts` and `complete_task`.** The UI and the plan both needed sorted, filtered views, and conflicts had to be reported as warnings instead of errors.
+7. **A plan never changes a `Task`.** A moved time lives in `PlanEntry.final_start`, so rebuilding the plan after an edit always starts clean.
+8. **The UML had drifted slightly.** At the end I checked it against `pawpal_system.py` and added the pieces it was missing: `Pet.EDITABLE_FIELDS`, `Pet._find_task` and `Scheduler._drop`.
 
 ---
 
@@ -78,6 +85,7 @@ I used an AI coding assistant (Claude Code) for almost every stage:
 - **Skeleton and review.** It generated the class skeleton with dataclasses, then reviewed it for missing relationships and logic risks before any scheduling code existed.
 - **Implementation.** It wrote sorting, filtering, conflict detection, recurring tasks, `build_plan()` and the Streamlit wiring.
 - **Debugging and refactoring.** For example, it found why adding a task from the UI silently did nothing, and it simplified the conflict check.
+- **UI and docs.** It added the pet and status filters and the custom species box to the Streamlit app, checked the UML against the final code, and drafted the README's Features list and Demo Walkthrough, which I reviewed and corrected.
 - **Tests.** It drafted the pytest tests, and we ran them after each step.
 
 The most helpful prompts were specific and asked for a judgment. "Do you think this has too much going on, or is it just right according to the requirements?" and "if anything is redundant work, simplify it" led to real simplifications. "Review the skeleton for missing relationships or potential logic bottlenecks" caught problems early, such as the plan being duplicated on rebuild and tasks wrapping past midnight. Working one step at a time and approving each change before it was made kept me in control of the design.
@@ -100,9 +108,10 @@ I didn't take the AI's work on trust once it was written. I ran every change: th
 - What behaviors did you test?
 - Why were these tests important?
 
-I wrote 23 pytest tests (`tests/test_pawpal.py`), and they all pass. They cover:
+I wrote 41 pytest tests (`tests/test_pawpal.py`), and they all pass. They cover:
 - **Basic behavior:** marking a task complete changes its status, and adding a task increases the pet's task count.
-- **Recurring tasks:** completing a daily task creates a copy due today + 1 day, and a weekly task one due today + 7 days. A one-time task creates nothing, completing twice never duplicates, and a task completed late still gets a next due date based on today.
+- **Sorting and filtering:** tasks come back in time order, equal times fall back to creation order, the input list isn't modified, and filters work by pet, by status and by both.
+- **Recurring tasks:** completing a daily task creates a copy due today + 1 day, and a weekly task one due today + 7 days. A one-time task creates nothing, completing twice never duplicates, a task completed late is dated from today, and finishing a future copy early doesn't create two copies for the same day.
 - **Conflict detection:** warnings for the same time on different pets and for an overlap on the same pet, and no warning for back-to-back or completed tasks.
 - **The plan (`build_plan`):**
   - non-overlapping tasks are kept
@@ -114,6 +123,7 @@ I wrote 23 pytest tests (`tests/test_pawpal.py`), and they all pass. They cover:
   - every entry has a reason and the plan is sorted by time
   - rebuilding twice doesn't duplicate entries, and it plans across several pets
 - **Edit and remove:** valid edits change only the given fields, and bad edits (a field that can't be edited, an invalid value, an unknown id) raise an error and leave the task unchanged. Removing a task works and an unknown id is rejected. An edit or removal also changes the regenerated plan.
+- **Window, boundaries and validation:** `set_window` updates the window and rejects a bad one, and changing it changes the plan. Tasks that exactly fit or run one minute over are handled, empty owners and pets give empty results, and bad input (zero duration, a task past midnight, an inverted window, a duplicate pet name) is rejected.
 
 These matter because the scheduler's value is that its decisions are right and explainable. A silent mistake, like the wrong task winning a conflict or a task landing outside the owner's window, would make the plan untrustworthy. As a check, I also temporarily broke the code three ways (reversed priority, no drop for a missing slot, no clear on rebuild), and the tests failed each time, so they do detect real mistakes.
 
@@ -122,19 +132,17 @@ These matter because the scheduler's value is that its decisions are right and e
 - How confident are you that your scheduler works correctly?
 - What edge cases would you test next if you had more time?
 
-I'm fairly confident the core scheduling rules work: priority ordering, tie-breaks, moving and dropping, the window limit and recurring tasks each have a test that fails when the logic is broken. I'm less sure about the edges, and there are real gaps:
-- `sort_by_time` and `filter_tasks` are only exercised through the `main.py` demo and through `build_plan`. They have no direct tests.
-- The input checks (a duration of 0, a window that ends before it starts, a task that runs past midnight, a duplicate pet name) are untested.
-- The Streamlit app was verified by running it through Streamlit's test runner in throwaway scripts, but those are not part of the test suite.
+I'm fairly confident, about 4 out of 5, in the core scheduling rules: priority ordering, tie-breaks, moving and dropping, the window limit, sorting, filtering and recurring tasks each have a test that fails when the logic is broken. Some gaps remain:
+- The Streamlit app was verified by running it, and earlier through Streamlit's test runner in throwaway scripts, but it has no automated tests in the suite. The newest UI changes, the filters and the custom species box, were only checked by running the app.
 - `build_plan` places tasks greedily by priority, so it can drop a task that a smarter arrangement would have kept. The tests confirm the rule is applied consistently, not that the result is optimal.
+- Blank task names are accepted, and a plan that crosses midnight is untested.
 
 With more time I would test:
-- **Boundaries:** a task that starts exactly when the window opens, ends exactly when it closes, or ends one minute past it.
-- **Empty cases:** no pets, a pet with no tasks, and a plan with every task completed.
 - **Many conflicts:** several tasks stacked on the same time, and a moved task that is pushed past the window end by a chain.
-- **Dates:** a recurring task completed on the last day of a month or year, and the plan running across midnight when "today" changes.
+- **Dates:** a recurring task completed on the last day of a month or year, and the plan when "today" changes while the app is open.
 - **Edits that cause problems:** editing a task so it now overlaps another, or changing a task's time after it has already been planned.
 - **Ties across pets:** two pets with identical tasks at the same time.
+- **The UI:** automated tests for adding a pet with a custom species, filtering, and generating a schedule.
 
 ---
 
@@ -144,10 +152,16 @@ With more time I would test:
 
 - What part of this project are you most satisfied with?
 
+I'm most satisfied that the scheduler explains itself. Every task in the plan is kept, moved or dropped, with a one-sentence reason like "moved from 12:30 to 12:45 because it overlapped Vet call". That came from the design decision to give each plan line its own `PlanEntry` with an outcome and reason, and it shows up in the UI, the demo script and the tests. I'm also happy that the logic stayed small and readable: a greedy priority rule is easy to predict, and the 41 tests, which I checked by deliberately breaking the code, make me trust it.
+
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
 
+I would first replace the greedy placement with something that can rearrange tasks, for example trying to keep the most tasks possible, while still giving a one-sentence reason for each decision. I would also let tasks have flexible time windows instead of a fixed start time, and add owner preferences such as "no walks after 6pm". On the app side, I would add automated tests for the Streamlit UI, since it is currently only checked by hand, and I would reject blank task names. Finally, I'd keep the UML updated as I code instead of checking it once at the end.
+
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+
+Working with AI went best when I made the decisions and the AI did the drafting. The AI drafted quickly, but it also over-built (the `Plan` wrapper class), left wording ambiguous (what "logged first" means) and made claims I had to check (an unfair benchmark). Asking it for a judgment, such as "is this too complicated?", and then running everything myself, with the demo, the tests and the real app, caught real bugs like the Streamlit pet copy. For system design, I learned that tightening the requirements before writing any code saved the most work. Each rule I wrote down, like the tie-break order, became a clear test later.

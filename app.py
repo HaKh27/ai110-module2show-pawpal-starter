@@ -64,8 +64,13 @@ except ValueError:
 with st.form("add_pet_form", clear_on_submit=True):
     pet_name = st.text_input("Pet name")
     species = st.selectbox("Species", ["dog", "cat", "other"])
+    other_species = st.text_input("If other, what kind of pet?", placeholder="e.g. rabbit, parrot")
     if st.form_submit_button("Add pet"):
         try:
+            if species == "other":
+                if not other_species.strip():
+                    raise ValueError("Please say what kind of pet it is.")
+                species = other_species.strip().lower()
             owner.add_pet(Pet(pet_name.strip(), species))
         except ValueError as e:
             st.error(str(e))
@@ -110,6 +115,17 @@ if all_tasks:
     if "flash" in st.session_state:
         st.success(st.session_state.pop("flash"))
     st.write("Current tasks:")
+    fcol1, fcol2 = st.columns(2)
+    pet_choice = fcol1.selectbox("Filter by pet", ["All pets"] + [p.name for p in owner.pets])
+    status_choice = fcol2.selectbox("Filter by status", ["All", "Pending", "Done"])
+    shown = scheduler.sort_by_time(
+        scheduler.filter_tasks(
+            pet_name=None if pet_choice == "All pets" else pet_choice,
+            completed={"All": None, "Pending": False, "Done": True}[status_choice],
+        )
+    )
+    if not shown:
+        st.info("No tasks match this filter.")
     st.table(
         [
             {
@@ -120,7 +136,7 @@ if all_tasks:
                 "Frequency": t.frequency.value,
                 "Status": "done" if t.completed else "pending",
             }
-            for p, t in all_tasks
+            for p, t in shown
         ]
     )
 

@@ -12,8 +12,10 @@ classDiagram
     class Pet {
         +str name
         +str species
+        +tuple EDITABLE_FIELDS$
         +List~Task~ tasks
         +add_task(task) void
+        -_find_task(task_id) Task
         +edit_task(task_id, changes) void
         +remove_task(task_id) void
     }
@@ -50,6 +52,7 @@ classDiagram
         +find_conflicts() List~str~
         +complete_task(pet, task) Task
         +build_plan(day) void
+        -_drop(pet, task, reason) void
     }
 
     class PlanEntry {

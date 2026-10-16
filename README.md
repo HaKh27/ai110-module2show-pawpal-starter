@@ -70,24 +70,7 @@ How they work together: an `Owner` has `Pet`s, each `Pet` has `Task`s, and the `
 
 ## 🖥️ Sample Output
 
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
-
-```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
-
-Today's Schedule for Jordan (07:00-20:00)
-Time        | Pet Name | Activity       | Priority | Frequency
-------------------------------------------------------------
-07:30-08:00 | Rex      | Morning walk   | HIGH     | daily
-08:00-08:10 | Mia      | Breakfast      | HIGH     | daily
-12:30-12:50 | Mia      | Play session   | MEDIUM   | once
-17:00-17:45 | Rex      | Grooming       | LOW      | weekly
-
-```
+Running `python main.py` prints a sample day for two pets. The full output is shown in the Demo Walkthrough below.
 
 ## 🧪 Testing PawPal+
 
@@ -194,19 +177,116 @@ Dropped
 
 ## 📸 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
-
 Start the app with `streamlit run app.py`. (For a terminal version of the same logic, run `python main.py`.)
 
-1. **Enter owner and pet info.** Under "Owner and Pets", type the owner's name, then add a pet with a name and species. Pet names must be unique, and a duplicate shows an error. Set the owner's available window with "Available from" and "Available until" (default 07:00-20:00). An end time that isn't after the start shows an error and keeps the previous window.
-2. **Add tasks.** Once a pet exists, pick the pet and enter a task title, start time, duration, priority (default Medium) and frequency (once, daily or weekly). The task table below lists every task sorted by time, with a Status column showing pending or done.
-3. **Edit, complete or remove a task.** Under "Edit or remove a task", choose a task and change its fields with "Save changes", press "Mark complete", or press "Remove task". Completing a daily or weekly task automatically adds the next occurrence, and the app says when it's due.
-4. **Generate the schedule.** Press "Generate schedule". If any tasks overlap, a warning lists each overlap. The plan table shows each task's final time, priority, outcome (kept or moved) and the reason for it.
-5. **Read the explanations.** Higher-priority tasks keep their slots, and lower-priority overlapping tasks are moved to the next free slot with a reason such as "moved from 08:00 to 08:20 because it overlapped Walk". Tasks that can't fit, or fall outside the owner's window, appear under "Dropped tasks" with the reason.
+### Main features and what a user can do
 
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+- **Owner and pets:** set the owner's name and daily available window (default 07:00-20:00), and add pets with a name and a species of dog, cat, or any kind you type under "other". Duplicate pet names and an end time that isn't after the start show an error.
+- **Tasks:** add a task with a title, start time, duration, priority and frequency (once, daily or weekly). Edit or remove it later, or mark it complete.
+- **Task list:** shown sorted by time, with filters for pet and status (pending or done).
+- **Schedule:** "Generate schedule" shows conflict warnings, then the plan with an outcome and reason for every task, plus a "Dropped tasks" list.
+
+### Example workflow
+
+1. **Enter owner and pet info.** Under "Owner and Pets", type the owner's name and add a pet, for example Rex the dog.
+2. **Add tasks.** Pick the pet and add "Morning walk" (07:30, 30 min, High, daily) and "Grooming" (17:00, 45 min, Low, weekly). The task table lists them sorted by time.
+3. **Filter and edit.** Use "Filter by pet" and "Filter by status" to narrow the list. Under "Edit or remove a task", choose a task and press "Save changes", "Mark complete" or "Remove task". Completing a daily or weekly task adds the next occurrence and the app says when it's due.
+4. **Generate today's schedule.** Press "Generate schedule". Overlaps are listed in a warning, and the plan table shows each task's final time, priority, outcome and reason.
+5. **Read the explanations.** Higher-priority tasks keep their slots, and lower-priority overlapping tasks are moved to the next free slot with a reason such as "moved from 17:00 to 17:45 because it overlapped Training". Tasks outside the owner's window or with no free slot appear under "Dropped tasks".
+
+### Scheduler behaviors shown
+
+- **Sorting:** the same tasks printed unsorted and then sorted by start time.
+- **Filtering:** Rex's tasks only, pending tasks, completed tasks, and one pet's pending tasks.
+- **Conflict warnings:** overlapping tasks are reported as readable warnings across pets, without stopping the program.
+- **Priority-based plan:** high-priority tasks are kept, lower-priority ones are moved (Play session 12:30 to 12:45, Grooming 17:00 to 17:45) and out-of-window tasks are dropped (Early meds).
+- **Recurrence:** completing a daily or weekly task creates the next one, and a once task creates none.
+
+### Sample CLI output (`python main.py`)
+
+```
+Today's Schedule for Jordan (07:00-20:00)
+
+All tasks as added (unsorted)
+Time        | Pet Name | Activity       | Priority | Frequency
+------------------------------------------------------------
+17:00-17:45 | Rex      | Grooming       | LOW      | weekly
+07:30-08:00 | Rex      | Morning walk   | HIGH     | daily
+12:30-12:45 | Rex      | Vet call       | HIGH     | once
+17:15-17:45 | Rex      | Training       | MEDIUM   | once
+06:00-06:10 | Rex      | Early meds     | HIGH     | once
+12:30-12:50 | Mia      | Play session   | MEDIUM   | once
+08:00-08:10 | Mia      | Breakfast      | HIGH     | daily
+
+All tasks, sorted by time
+Time        | Pet Name | Activity       | Priority | Frequency
+------------------------------------------------------------
+06:00-06:10 | Rex      | Early meds     | HIGH     | once
+07:30-08:00 | Rex      | Morning walk   | HIGH     | daily
+08:00-08:10 | Mia      | Breakfast      | HIGH     | daily
+12:30-12:50 | Mia      | Play session   | MEDIUM   | once
+12:30-12:45 | Rex      | Vet call       | HIGH     | once
+17:00-17:45 | Rex      | Grooming       | LOW      | weekly
+17:15-17:45 | Rex      | Training       | MEDIUM   | once
+
+Rex's tasks only
+Time        | Pet Name | Activity       | Priority | Frequency
+------------------------------------------------------------
+06:00-06:10 | Rex      | Early meds     | HIGH     | once
+07:30-08:00 | Rex      | Morning walk   | HIGH     | daily
+12:30-12:45 | Rex      | Vet call       | HIGH     | once
+17:00-17:45 | Rex      | Grooming       | LOW      | weekly
+17:15-17:45 | Rex      | Training       | MEDIUM   | once
+
+Pending tasks
+Time        | Pet Name | Activity       | Priority | Frequency
+------------------------------------------------------------
+06:00-06:10 | Rex      | Early meds     | HIGH     | once
+07:30-08:00 | Rex      | Morning walk   | HIGH     | daily
+12:30-12:50 | Mia      | Play session   | MEDIUM   | once
+12:30-12:45 | Rex      | Vet call       | HIGH     | once
+17:00-17:45 | Rex      | Grooming       | LOW      | weekly
+17:15-17:45 | Rex      | Training       | MEDIUM   | once
+
+Completed tasks
+Time        | Pet Name | Activity       | Priority | Frequency
+------------------------------------------------------------
+08:00-08:10 | Mia      | Breakfast      | HIGH     | daily
+
+Mia's pending tasks
+Time        | Pet Name | Activity       | Priority | Frequency
+------------------------------------------------------------
+12:30-12:50 | Mia      | Play session   | MEDIUM   | once
+
+Conflict check
+Warning: Play session (12:30-12:50) overlaps Vet call (12:30-12:45) for Mia and Rex
+Warning: Grooming (17:00-17:45) overlaps Training (17:15-17:45) for Rex
+
+Generated Plan
+Time        | Pet Name | Activity       | Priority | Outcome | Reason
+----------------------------------------------------------------------------------------------------
+07:30-08:00 | Rex      | Morning walk   | HIGH     | kept    | kept at requested time (priority HIGH)
+12:30-12:45 | Rex      | Vet call       | HIGH     | kept    | kept at requested time (priority HIGH)
+12:45-13:05 | Mia      | Play session   | MEDIUM   | moved   | moved from 12:30 to 12:45 because it overlapped Vet call
+17:15-17:45 | Rex      | Training       | MEDIUM   | kept    | kept at requested time (priority MEDIUM)
+17:45-18:30 | Rex      | Grooming       | LOW      | moved   | moved from 17:00 to 17:45 because it overlapped Training
+
+Dropped
+06:00  Rex   Early meds     outside available window (07:00-20:00)
+
+Completing recurring tasks
+Rex: Morning walk (daily) done -> next due 2026-10-16
+Rex: Grooming (weekly) done -> next due 2026-10-22
+Mia: Play session (once) done -> no next occurrence
+```
+
+### Screenshots
+
 ![PawPalOwner](image.png)
 ![AddPet](image-1.png)
 ![EditRemoveTask](image-2.png)
-![scheduleBuilder](image-3.png) #moved brownie's breakfast from 9:15 start time to 9:20 to avoid conflicts. 
-![InvalidActivityTime](image-4.png)
+![scheduleBuilder](image-3.png)
+*Brownie's breakfast was moved from 09:15 to 09:20 to avoid a conflict.*
+
+![DroppedTask](image-4.png)
+*Brownie's 06:00 Morning walk is dropped because it falls outside the 07:00-20:00 available window.*
